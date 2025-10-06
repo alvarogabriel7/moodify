@@ -33,22 +33,25 @@ auth_manager = SpotifyOAuth(
 # FUNÇÃO PARA GERENCIAR TOKEN
 # ==============================
 def get_access_token_from_state_or_query():
-    # 1️⃣ Se o token já estiver no estado da sessão
+    # 1️⃣ Se já temos o token guardado
     if "token_info" in st.session_state and st.session_state["token_info"]:
         token_info = st.session_state["token_info"]
         return token_info.get("access_token")
 
-    # 2️⃣ Se o Spotify redirecionou de volta com um código de autenticação
-    if "code" in st.query_params:
-        code = st.query_params["code"][0]
+    # 2️⃣ Se o Spotify redirecionou com um código
+    query_params = st.query_params
+    if "code" in query_params:
+        # o Streamlit agora retorna query_params como um dicionário simples
+        code = query_params["code"]
         token_info = auth_manager.get_access_token(code)
         st.session_state["token_info"] = token_info
-        # limpa os parâmetros da URL
+        # limpa a query string
         st.query_params.clear()
         return token_info.get("access_token")
 
-    # 3️⃣ Caso não haja token, retorna None
+    # 3️⃣ Nenhum token encontrado
     return None
+
 
 
 # ==============================
@@ -113,3 +116,4 @@ if st.button("🎧 Gerar recomendações"):
 # ==============================
 st.markdown("---")
 st.caption("Desenvolvido com ❤️ e ☕ por Álvaro Gabriel – Projeto Moodify")
+
