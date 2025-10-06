@@ -32,26 +32,24 @@ st.write("Selecione seu humor, conecte ao Spotify (se ainda não), e gere recome
 
 # --- Função para obter access token (captura 'code' da URL após redirect) ---
 def get_access_token_from_query():
-    # se já tem token salvo, retorna ele
     if "token_info" in st.session_state:
         token_info = st.session_state["token_info"]
-        # opcional: checar expiração aqui e refresh se necessário
         return token_info.get("access_token") if isinstance(token_info, dict) else token_info
 
-    params = st.experimental_get_query_params()
+    params = st.query_params
     if "code" in params:
-        code = params["code"][0]
+        code = params["code"]
         try:
             token_info = auth_manager.get_access_token(code)
         except Exception as e:
             st.error(f"Erro ao trocar code por token: {e}")
             return None
         st.session_state["token_info"] = token_info
-        # limpa a query string (boa prática)
-        st.experimental_set_query_params()
+        st.query_params.clear()
         return token_info.get("access_token") if isinstance(token_info, dict) else token_info
 
     return None
+
 
 # --- Se não tem token, mostrar link para conectar ---
 access_token = get_access_token_from_query()
