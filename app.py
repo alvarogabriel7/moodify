@@ -1,112 +1,102 @@
-import os
 import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-from dotenv import load_dotenv
+import os
 
-# --- Config (leitura de secrets no Cloud ou .env local) ---
-load_dotenv()  # apenas para ambiente local se quiser usar .env
+# ==============================
+# 🔧 CONFIGURAÇÕES DO APP
+# ==============================
+st.set_page_config(page_title="Moodify 🎧", page_icon="🎵", layout="centered")
 
-CLIENT_ID = st.secrets.get("SPOTIPY_CLIENT_ID") or os.getenv("SPOTIPY_CLIENT_ID")
-CLIENT_SECRET = st.secrets.get("SPOTIPY_CLIENT_SECRET") or os.getenv("SPOTIPY_CLIENT_SECRET")
-REDIRECT_URI = st.secrets.get("SPOTIPY_REDIRECT_URI") or os.getenv("SPOTIPY_REDIRECT_URI") or "https://moodifyagcl.streamlit.app/callback"
+# Título
+st.title("🎧 Moodify — Recomendações musicais pelo seu humor")
 
-if not CLIENT_ID or not CLIENT_SECRET:
-    st.error("Spotify credentials missing. Add them to Streamlit Secrets or .env.")
-    st.stop()
+# ==============================
+# 🔐 CONFIGURAÇÃO DE CREDENCIAIS
+# ==============================
+SPOTIPY_CLIENT_ID = st.secrets["SPOTIPY_CLIENT_ID"]
+SPOTIPY_CLIENT_SECRET = st.secrets["SPOTIPY_CLIENT_SECRET"]
+SPOTIPY_REDIRECT_URI = "https://moodifyagcl.streamlit.app/callback"
+SCOPE = "user-library-read playlist-modify-public"
 
-# --- OAuth config ---
-SCOPE = "user-read-private user-read-email"  # suficiente para recomendações
+# Inicializa autenticação Spotify
 auth_manager = SpotifyOAuth(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET,
-    redirect_uri=REDIRECT_URI,
+    client_id=SPOTIPY_CLIENT_ID,
+    client_secret=SPOTIPY_CLIENT_SECRET,
+    redirect_uri=SPOTIPY_REDIRECT_URI,
     scope=SCOPE,
-    cache_path=".cache",   # cache local do token (no Cloud funciona também)
-    open_browser=False
 )
 
-st.set_page_config(page_title="Moodify 🎭", page_icon="🎵", layout="centered")
-st.title("🎭 Moodify — Recomendador de Músicas por Humor")
-st.write("Selecione seu humor, conecte ao Spotify (se ainda não), e gere recomendações.")
+# ==============================
+# ⚙️ AUTENTICAÇÃO
+# ==============================
+query_params = st.query_params
+code = query_params.get("code", None)
 
-# --- Função para obter access token (captura 'code' da URL após redirect) ---
-def get_access_token_from_query():
-    if "token_info" in st.session_state:
-        token_info = st.session_state["token_info"]
-        return token_info.get("access_token") if isinstance(token_info, dict) else token_info
+if "token_info" not in st.session_state:
+    if code:
+        token_info = auth_manager.get_access_token(code, check_cache=False)
+        st.session_state.token_info = token_info
+    else:
+        auth_url = auth_manager.get_authorize_url()
+        st.markdown(
+            f"[🔑 Conectar ao Spotify]({auth_url})",
+            unsafe_allow_html=True,
+        )
+        st.stop()
 
-    params = st.query_params
-    if "code" in params:
-        code = params["code"]
-        try:
-            token_info = auth_manager.get_access_token(code)
-        except Exception as e:
-            st.error(f"Erro ao trocar code por token: {e}")
-            return None
-        st.session_state["token_info"] = token_info
-        st.query_params.clear()
-        return token_info.get("access_token") if isinstance(token_info, dict) else token_info
+# Cria cliente Spotify autenticado
+sp = spotipy.Spotify(auth=st.session_state.token_info["access_token"])
 
-    return None
+# ==============================
+# 🎭 ESCOLHA DO HUMOR
+# ==============================
+st.subheader("Como você está se sentindo hoje?")
+humor = st.selectbox(
+    "Selecione seu humor:",
+    ["Feliz", "Triste", "Relaxado", "Motivado", "Romântico"]
+)
 
-
-# --- Se não tem token, mostrar link para conectar ---
-access_token = get_access_token_from_query()
-if not access_token:
-    auth_url = auth_manager.get_authorize_url()
-    st.markdown("### Primeiro passo: conectar sua conta Spotify")
-    st.markdown(f"[🔗 Conectar ao Spotify]({auth_url})", unsafe_allow_html=True)
-    st.info("Após login, o Spotify vai redirecionar de volta ao app. Então volte e clique em 'Gerar Recomendações'.")
-    # interrompe execução até token existir
-    st.stop()
-
-# --- Inicializa cliente Spotify com o token do usuário ---
-sp = spotipy.Spotify(auth=access_token)
-
-# --- Mapeamento humor -> gêneros (ajuste conforme preferir) ---
-mapa_humor = {
-    "Feliz 😊": ["pop", "dance", "party"],
-    "Triste 😢": ["acoustic", "sad", "piano"],
-    "Relaxado 😌": ["chill", "ambient", "lofi"],
-    "Energético ⚡": ["rock", "electronic", "workout"],
-    "Romântico 💕": ["romance", "rnb", "soul"]
+# Mapeamento de humor → gêneros válidos do Spotify
+humores_para_generos = {
+    "Feliz": ["pop", "dance", "edm"],
+    "Triste": ["acoustic", "piano", "singer-songwriter"],
+    "Relaxado": ["chill", "ambient", "lo-fi"],
+    "Motivado": ["rock", "hip-hop", "metal"],
+    "Romântico": ["r-n-b", "soul", "romance"]
 }
 
-humor_escolhido = st.selectbox("Como você está se sentindo hoje?", list(mapa_humor.keys()))
-st.write(f"Humor selecionado: **{humor_escolhido}**")
+# Gêneros correspondentes ao humor selecionado
+generos = humores_para_generos.get(humor, ["pop"])
 
-if st.button("🎧 Gerar Recomendações"):
-    generos = mapa_humor[humor_escolhido]
-    st.info(f"Gerando recomendações usando gêneros: {generos}")
-
+# ==============================
+# 🔍 BUSCAR RECOMENDAÇÕES
+# ==============================
+if st.button("🎶 Gerar recomendações"):
     try:
-        # Recomendações (usa o token do usuário)
-        recs = sp.recommendations(seed_genres=generos, limit=10, country="BR")
-        tracks = recs.get("tracks", [])
+        # Filtra gêneros válidos diretamente da API
+        generos_validos = sp.recommendation_genre_seeds()["genres"]
+        generos_filtrados = [g for g in generos if g in generos_validos]
 
+        if not generos_filtrados:
+            st.error("Nenhum gênero válido encontrado para este humor.")
+            st.stop()
+
+        st.info(f"🎧 Gerando recomendações com base em: {', '.join(generos_filtrados)}")
+
+        recomendacoes = sp.recommendations(seed_genres=generos_filtrados[:5], limit=10, market="BR")
+
+        tracks = recomendacoes.get("tracks", [])
         if not tracks:
-            st.warning("Nenhuma recomendação encontrada. Tente outro humor ou atualize a página.")
+            st.warning("😕 Nenhuma recomendação encontrada. Tente outro humor.")
         else:
-            st.subheader("🎶 Recomendações")
-            for t in tracks:
-                nome = t["name"]
-                artistas = ", ".join([a["name"] for a in t["artists"]])
-                capa = t["album"]["images"][0]["url"] if t["album"]["images"] else None
-                preview = t.get("preview_url")
-                url = t["external_urls"]["spotify"]
-
-                cols = st.columns([1, 3])
-                with cols[0]:
-                    if capa:
-                        st.image(capa, use_column_width=True)
-                with cols[1]:
-                    st.markdown(f"**[{nome}]({url})**  \n{artistas}")
-                    if preview:
-                        st.audio(preview)
-                    st.markdown("---")
+            st.success("✨ Aqui estão suas músicas recomendadas:")
+            for track in tracks:
+                nome = track["name"]
+                artista = ", ".join([a["name"] for a in track["artists"]])
+                url = track["external_urls"]["spotify"]
+                st.markdown(f"- [{nome} – {artista}]({url})")
 
     except Exception as e:
         st.error(f"Erro ao gerar recomendações: {e}")
-        # logs adicionais úteis (aparecerão nos logs do Streamlit Cloud)
-        st.write("Debug: verifique logs do app no painel do Streamlit Cloud.")
+        st.write("🔍 Debug: verifique os logs no Streamlit Cloud para mais detalhes.")
