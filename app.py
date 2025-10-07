@@ -2,9 +2,7 @@ import streamlit as st
 import requests
 from io import BytesIO
 
-# ==============================
 # Configurações da página
-# ==============================
 st.set_page_config(
     page_title="Moodify 🎧",
     page_icon="🎵",
@@ -105,24 +103,24 @@ musicas_por_humor = {
     ],
 }
 
-# ==============================
+
 # Interface
-# ==============================
+
 humor = st.selectbox("Como você está se sentindo hoje?", list(musicas_por_humor.keys()))
 
 if st.button("🎶 Gerar recomendações"):
     st.subheader(f"🎧 Músicas recomendadas para o humor: {humor}")
     recomendacoes = musicas_por_humor[humor]
 
-   # for musica in recomendacoes:
-       # try:
-          #  response = requests.get(musica["imagem"])
-           # if response.status_code == 200:
-              #  st.image(BytesIO(response.content), width=200)
-           # else:
-               # st.warning("Não foi possível carregar a imagem da música.")
-      #  except Exception as e:
-           # st.warning(f"Erro ao carregar imagem: {e}")
+    for musica in recomendacoes:
+        try:
+            response = requests.get(musica["imagem"])
+            if response.status_code == 200:
+                st.image(BytesIO(response.content), width=200)
+            else:
+                st.warning("Não foi possível carregar a imagem da música.")
+        except Exception as e:
+            st.warning(f"Erro ao carregar imagem: {e}")
 
         st.markdown(f"**{musica['titulo']}**")
         st.markdown(f"[Ouvir no Spotify 🎧]({musica['link']})")
@@ -132,4 +130,5 @@ if st.button("🎶 Gerar recomendações"):
         st.markdown("---")
 
 st.caption("Moodify - Desenvolvido por Álvaro Gabriel ;)")
+
 
